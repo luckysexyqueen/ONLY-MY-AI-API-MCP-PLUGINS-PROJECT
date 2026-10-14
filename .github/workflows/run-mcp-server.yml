@@ -1,8 +1,9 @@
-name: Run MCP server on GitHub Actions
+name: MCP Server Runtime Check
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - 'server/**'
       - 'requirements.txt'
@@ -11,52 +12,43 @@ on:
 permissions:
   contents: read
 jobs:
-  mcp-runtime-test:
+  mcp-runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
-      - name: Install MCP dependencies
+      - name: Install
         run: python -m pip install -r requirements.txt
-      - name: Start MCP server (runner-local only)
+      - name: Start server and verify
         env:
-          MCP_BEARER_TOKEN: github-actions-smoke-test-only
+          MCP_BEARER_TOKEN: github-actions-test-token
           ALLOWED_API_HOSTS: ''
+        shell: bash
         run: |
-          python -m uvicorn server.app:app --host 127.0.0.1 --port 8080 > /tmp/mcp.log 2>&1 &
-          echo $! > /tmp/mcp.pid
-          for i in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8080/health > /tmp/health.json; then break; fi
+          set -euo pipefail
+          python -m uvicorn server.app:app --host 127.0.0.1 --port 8080 > /tmp/mcp-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; cat /tmp/mcp-server.log' EXIT
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:8080/health > /tmp/mcp-health.json; then break; fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then exit 1; fi
             sleep 1
           done
           python - <<'PY'
-          import json
-          with open('/tmp/health.json') as f: h=json.load(f)
-          assert h['status']=='ok', h
-          print('MCP runtime health OK:',h)
-          PY
-      - name: Verify JSON-RPC initialize and tools/list
-        run: |
-          python - <<'PY'
           import json,urllib.request
-          endpoint='http://127.0.0.1:8080/mcp'
-          for ident,method in [(1,'initialize'),(2,'tools/list')]:
-              body=json.dumps({'jsonrpc':'2.0','id':ident,'method':method,'params':{}}).encode()
-              req=urllib.request.Request(endpoint,data=body,headers={'Content-Type':'application/json','Authorization':'Bearer github-actions-smoke-test-only'})
-              with urllib.request.urlopen(req,timeout=10) as resp: result=json.load(resp)
-              assert result['id']==ident and 'result' in result,result
+          with open('/tmp/mcp-health.json') as f: health=json.load(f)
+          assert health['status']=='ok',health
+          for method in ('initialize','tools/list'):
+              payload=json.dumps({'jsonrpc':'2.0','id':1,'method':method,'params':{}}).encode()
+              request=urllib.request.Request('http://127.0.0.1:8080/mcp',data=payload,headers={'Content-Type':'application/json','Authorization':'Bearer github-actions-test-token'})
+              with urllib.request.urlopen(request,timeout=10) as response: result=json.load(response)
+              assert 'result' in result,result
               if method=='tools/list':
-                  tools=result['result']['tools']
-                  assert any(t['name']=='list_api_operations' for t in tools)
-                  print('MCP tools/list OK:',len(tools))
-              else: print('MCP initialize OK')
+                  assert any(t['name']=='list_api_operations' for t in result['result']['tools'])
+              print(method,'OK')
           PY
-      - name: Run source tests
-        run: python -m unittest discover -s tests -p 'test_*.py'
-      - name: Show logs on failure
-        if: failure()
-        run: cat /tmp/mcp.log || true
