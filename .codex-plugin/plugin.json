@@ -1,0 +1,19 @@
+{
+  "interface": {
+    "displayName": "Spec Direct Auto Inject",
+    "shortDescription": "OpenAPI \ub204\uc801 \uc790\ub3d9 \ub4f1\ub85d",
+    "longDescription": "Analyze OpenAPI specs and assist with a deployable MCP execution server. Cloud deployment and client authorization are separate.",
+    "developerName": "Plugin author",
+    "category": "Productivity",
+    "defaultPrompt": "\uc811\uadfc \uac00\ub2a5\ud55c OpenAPI \uba85\uc138\ub97c \ub204\uc801 \ubcd1\ud569\ud558\uace0 \uc0ac\uc6a9 \uac00\ub2a5\ud55c \uae30\ub2a5\uc744 \uc801\uc6a9\ud574\uc918.",
+    "capabilities": []
+  },
+  "name": "spec-direct-auto-inject",
+  "version": "1.5.7",
+  "description": "Portable user-editable patch manager with preview, backups, rollback and GitHub/Cloudflare deployment templates; cloud authorization separate.",
+  "author": {
+    "name": "Plugin author"
+  },
+  "keywords": [],
+  "skills": "./skills"
+}
