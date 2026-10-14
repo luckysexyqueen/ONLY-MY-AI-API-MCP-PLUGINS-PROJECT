@@ -12,6 +12,9 @@
     "patch:preview": "node scripts/patch-manager.mjs preview",
     "patch:apply": "node scripts/patch-manager.mjs apply",
     "patch:rollback": "node scripts/patch-manager.mjs rollback",
-    "patch:test": "node --test tests/patch-manager.test.mjs"
+    "patch:test": "node --test tests/patch-manager.test.mjs",
+    "build": "npm install --prefix cloudflare --no-audit --no-fund && npm run worker:bundle",
+    "deploy": "cd cloudflare && npx wrangler deploy",
+    "deploy:check": "npm run build && npm run deploy"
   }
 }
