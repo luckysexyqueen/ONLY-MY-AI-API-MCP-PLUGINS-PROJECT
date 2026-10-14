@@ -32,8 +32,13 @@ jobs:
           MCP_PUBLIC_URL: ${{ vars.MCP_PUBLIC_URL }}
         run: npm run pages:build
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+      - name: Package Pages artifact without unpinned composite action
+        run: tar --dereference --hard-dereference -cvf github-pages.tar -C dist-pages .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          path: dist-pages
+          name: github-pages
+          path: github-pages.tar
+          retention-days: 1
+          compression-level: 0
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
