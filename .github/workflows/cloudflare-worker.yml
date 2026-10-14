@@ -1,0 +1,47 @@
+name: Cloudflare MCP Worker
+on:
+  push:
+    branches: [main]
+    paths: ['specs/**', 'cloudflare/**', 'scripts/bundle-worker.mjs', '.github/workflows/cloudflare-worker.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-worker
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: cloudflare-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require Cloudflare credentials
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MCP_TOKEN: ${{ secrets.SPEC_DIRECT_MCP_TOKEN }}
+        run: |
+          test -n "$CF_TOKEN" && test -n "$CF_ACCOUNT" && test ${#MCP_TOKEN} -ge 24 || { echo 'Missing required secrets'; exit 1; }
+      - run: npm install --prefix cloudflare --no-audit --no-fund
+      - run: npm run worker:bundle
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: cd cloudflare && npx wrangler deploy
+      - name: Set MCP authentication secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MCP_TOKEN: ${{ secrets.SPEC_DIRECT_MCP_TOKEN }}
+        run: printf '%s' "$MCP_TOKEN" | (cd cloudflare && npx wrangler secret put MCP_BEARER_TOKEN)
+      - name: Verify MCP tools/list
+        env:
+          MCP_PUBLIC_URL: ${{ vars.MCP_PUBLIC_URL }}
+          SPEC_DIRECT_MCP_TOKEN: ${{ secrets.SPEC_DIRECT_MCP_TOKEN }}
+        run: |
+          test -n "$MCP_PUBLIC_URL" || { echo 'Set repository variable MCP_PUBLIC_URL to your real Worker URL'; exit 1; }
+          node --input-type=module -e 'const raw=process.env.MCP_PUBLIC_URL;const u=new URL(raw);if(u.protocol!=="https:")throw Error("HTTPS required");const url=u.href.replace(/\/$/,"")+(u.pathname.endsWith("/mcp")?"":"/mcp");const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+process.env.SPEC_DIRECT_MCP_TOKEN,"Content-Type":"application/json",Accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}})});const j=await r.json();if(!r.ok||!Array.isArray(j?.result?.tools))throw Error("MCP verification failed: HTTP "+r.status);console.log("MCP tools/list verified");' 
