@@ -8,7 +8,7 @@ function normalize(value){
   if(!value)return '';
   const u=new URL(value);
   if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw Error('MCP_PUBLIC_URL must be a clean HTTPS URL');
-  const p=u.pathname.replace(/\\/$/,'');
+  const p=u.pathname.replace(/\/$/,'');
   u.pathname=p.endsWith('/mcp')?p:(p+'/mcp');
   return u.href;
 }
@@ -30,7 +30,7 @@ const html=`<!doctype html>
 <script>
 const defaultUrl=${JSON.stringify(configured)};
 const input=document.getElementById('endpoint'),status=document.getElementById('status'),display=document.getElementById('url'),copy=document.getElementById('copy'),link=document.getElementById('link');
-function normalize(v){const u=new URL(v);if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw Error('쿼리나 인증정보 없는 HTTPS 주소만 허용됩니다.');u.pathname=u.pathname.replace(/\\/$/,'');if(!u.pathname.endsWith('/mcp'))u.pathname+='/mcp';return u.href}
+function normalize(v){const u=new URL(v);if(u.protocol!=='https:'||u.username||u.password||u.search||u.hash)throw Error('쿼리나 인증정보 없는 HTTPS 주소만 허용됩니다.');u.pathname=u.pathname.replace(/\/$/,'');if(!u.pathname.endsWith('/mcp'))u.pathname+='/mcp';return u.href}
 function render(v){input.value=v;display.textContent=v||'MCP 서버 주소 미설정';copy.disabled=!v;link.hidden=!v;if(v)link.href=v;else link.removeAttribute('href');status.textContent=v?'MCP 주소 입력됨 · 서버 연결은 확인되지 않음':'MCP_PUBLIC_URL 미설정 · 대시보드 사용 가능 (서버 미연결)'}
 try{render(localStorage.getItem('spec-direct-mcp-url')||defaultUrl)}catch{render(defaultUrl)}
 document.getElementById('save').onclick=()=>{try{const v=normalize(input.value.trim());localStorage.setItem('spec-direct-mcp-url',v);render(v)}catch(e){status.textContent='주소 오류: '+e.message}};
