@@ -1,0 +1,52 @@
+name: Run MCP server on GitHub Actions
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'requirements.txt'
+      - 'specs/**'
+      - '.github/workflows/run-mcp-server.yml'
+permissions:
+  contents: read
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Start temporary MCP server
+        env:
+          MCP_BEARER_TOKEN: github-actions-test-token-not-for-production
+          ALLOWED_API_HOSTS: ''
+        run: |
+          python -m uvicorn server.app:app --host 127.0.0.1 --port 8080 > /tmp/spec-direct-server.log 2>&1 &
+          echo $! > /tmp/spec-direct-server.pid
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/health > /tmp/health.json; then break; fi
+            sleep 1
+          done
+          python -c "import json; x=json.load(open('/tmp/health.json')); assert x['status']=='ok'; print('Health:',x)"
+      - name: Verify MCP tools/list
+        run: |
+          python - <<'PY'
+          import json,urllib.request
+          url='http://127.0.0.1:8080/mcp'
+          data=json.dumps({'jsonrpc':'2.0','id':1,'method':'tools/list','params':{}}).encode()
+          req=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json','Authorization':'Bearer github-actions-test-token-not-for-production'})
+          with urllib.request.urlopen(req,timeout=10) as response:
+              obj=json.load(response)
+          tools=obj['result']['tools']
+          assert any(x['name']=='list_api_operations' for x in tools)
+          print('MCP tools/list OK:',len(tools),'tools; API specs may be added later')
+          PY
+      - name: Print logs on failure
+        if: failure()
+        run: cat /tmp/spec-direct-server.log || true
