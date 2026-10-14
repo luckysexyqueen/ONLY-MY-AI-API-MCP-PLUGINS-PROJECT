@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
 jobs:
-  smoke-test:
+  mcp-runtime-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -20,33 +20,43 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - name: Install Python dependencies
+      - name: Install MCP dependencies
         run: python -m pip install -r requirements.txt
-      - name: Start temporary MCP server
+      - name: Start MCP server (runner-local only)
         env:
-          MCP_BEARER_TOKEN: github-actions-test-token-not-for-production
+          MCP_BEARER_TOKEN: github-actions-smoke-test-only
           ALLOWED_API_HOSTS: ''
         run: |
-          python -m uvicorn server.app:app --host 127.0.0.1 --port 8080 > /tmp/spec-direct-server.log 2>&1 &
-          echo $! > /tmp/spec-direct-server.pid
+          python -m uvicorn server.app:app --host 127.0.0.1 --port 8080 > /tmp/mcp.log 2>&1 &
+          echo $! > /tmp/mcp.pid
           for i in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:8080/health > /tmp/health.json; then break; fi
             sleep 1
           done
-          python -c "import json; x=json.load(open('/tmp/health.json')); assert x['status']=='ok'; print('Health:',x)"
-      - name: Verify MCP tools/list
+          python - <<'PY'
+          import json
+          with open('/tmp/health.json') as f: h=json.load(f)
+          assert h['status']=='ok', h
+          print('MCP runtime health OK:',h)
+          PY
+      - name: Verify JSON-RPC initialize and tools/list
         run: |
           python - <<'PY'
           import json,urllib.request
-          url='http://127.0.0.1:8080/mcp'
-          data=json.dumps({'jsonrpc':'2.0','id':1,'method':'tools/list','params':{}}).encode()
-          req=urllib.request.Request(url,data=data,headers={'Content-Type':'application/json','Authorization':'Bearer github-actions-test-token-not-for-production'})
-          with urllib.request.urlopen(req,timeout=10) as response:
-              obj=json.load(response)
-          tools=obj['result']['tools']
-          assert any(x['name']=='list_api_operations' for x in tools)
-          print('MCP tools/list OK:',len(tools),'tools; API specs may be added later')
+          endpoint='http://127.0.0.1:8080/mcp'
+          for ident,method in [(1,'initialize'),(2,'tools/list')]:
+              body=json.dumps({'jsonrpc':'2.0','id':ident,'method':method,'params':{}}).encode()
+              req=urllib.request.Request(endpoint,data=body,headers={'Content-Type':'application/json','Authorization':'Bearer github-actions-smoke-test-only'})
+              with urllib.request.urlopen(req,timeout=10) as resp: result=json.load(resp)
+              assert result['id']==ident and 'result' in result,result
+              if method=='tools/list':
+                  tools=result['result']['tools']
+                  assert any(t['name']=='list_api_operations' for t in tools)
+                  print('MCP tools/list OK:',len(tools))
+              else: print('MCP initialize OK')
           PY
-      - name: Print logs on failure
+      - name: Run source tests
+        run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Show logs on failure
         if: failure()
-        run: cat /tmp/spec-direct-server.log || true
+        run: cat /tmp/mcp.log || true
