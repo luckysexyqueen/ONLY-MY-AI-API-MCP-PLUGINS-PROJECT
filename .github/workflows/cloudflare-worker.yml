@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: cloudflare-production
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
       - name: Require Cloudflare credentials
@@ -28,10 +28,14 @@ jobs:
       - run: npm install --prefix cloudflare --no-audit --no-fund
       - run: npm run worker:bundle
       - name: Deploy Worker
+        id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: cd cloudflare && npx wrangler deploy
+        run: |
+          cd cloudflare
+          npx wrangler deploy 2>&1 | tee ../worker-deploy.log
+          node --input-type=module -e 'import fs from "node:fs"; const log=fs.readFileSync("../worker-deploy.log","utf8"); const m=log.match(/https:\/\/[^\\s<>"\x27]+\\.workers\\.dev(?:\/[^\\s<>"\x27]*)?/); if(!m) throw Error("Cannot detect deployed workers.dev URL; check workers.dev subdomain settings"); const u=new URL(m[0]); u.pathname="/mcp"; fs.appendFileSync(process.env.GITHUB_OUTPUT,`mcp_url=${u.href}\\n`); console.log("Deployed MCP endpoint:",u.href);'
       - name: Set MCP authentication secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -40,8 +44,10 @@ jobs:
         run: printf '%s' "$MCP_TOKEN" | (cd cloudflare && npx wrangler secret put MCP_BEARER_TOKEN)
       - name: Verify MCP tools/list
         env:
-          MCP_PUBLIC_URL: ${{ vars.MCP_PUBLIC_URL }}
+          MCP_PUBLIC_URL: ${{ steps.deploy.outputs.mcp_url }}
           SPEC_DIRECT_MCP_TOKEN: ${{ secrets.SPEC_DIRECT_MCP_TOKEN }}
         run: |
-          test -n "$MCP_PUBLIC_URL" || { echo 'Set repository variable MCP_PUBLIC_URL to your real Worker URL'; exit 1; }
-          node --input-type=module -e 'const raw=process.env.MCP_PUBLIC_URL;const u=new URL(raw);if(u.protocol!=="https:")throw Error("HTTPS required");const url=u.href.replace(/\/$/,"")+(u.pathname.endsWith("/mcp")?"":"/mcp");const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+process.env.SPEC_DIRECT_MCP_TOKEN,"Content-Type":"application/json",Accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}})});const j=await r.json();if(!r.ok||!Array.isArray(j?.result?.tools))throw Error("MCP verification failed: HTTP "+r.status);console.log("MCP tools/list verified");' 
+          test -n "$MCP_PUBLIC_URL" || { echo 'Deployment did not return an MCP URL'; exit 1; }
+          node --input-type=module -e 'const url=process.env.MCP_PUBLIC_URL;const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+process.env.SPEC_DIRECT_MCP_TOKEN,"Content-Type":"application/json",Accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}})});const j=await r.json();if(!r.ok||!Array.isArray(j?.result?.tools))throw Error("MCP verification failed: HTTP "+r.status);console.log("MCP tools/list verified at",url);'
+      - name: Show public MCP URL
+        run: echo "MCP_PUBLIC_URL=${{ steps.deploy.outputs.mcp_url }}" >> "$GITHUB_STEP_SUMMARY"
