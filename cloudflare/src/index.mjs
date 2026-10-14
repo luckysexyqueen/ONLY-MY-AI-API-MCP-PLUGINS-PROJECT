@@ -76,9 +76,10 @@ const tools=[
 export default {async fetch(request,env){
  const url=new URL(request.url);
  if((url.pathname==='/health'||url.pathname==='/')&&request.method==='GET')return json({status:'ok',service:'spec-direct-mcp',mode:'always-available-serverless',mcp_path:'/mcp',operations:Object.keys(registry().ops).length},200,{'Access-Control-Allow-Origin':'*'});
- if(url.pathname!=='/mcp')return json({error:'Not found'},404);
+ const publicReadOnly=url.pathname==='/mcp-public';
+ if(url.pathname!=='/mcp'&&!publicReadOnly)return json({error:'Not found'},404);
  if(request.method!=='POST')return json({error:'Method not allowed'},405,{'Allow':'POST'});
- if(!env.MCP_BEARER_TOKEN||request.headers.get('Authorization')!==`Bearer ${env.MCP_BEARER_TOKEN}`)return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});
+ if(!publicReadOnly&&(!env.MCP_BEARER_TOKEN||request.headers.get('Authorization')!==`Bearer ${env.MCP_BEARER_TOKEN}`))return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});
  const origin=request.headers.get('Origin');
  if(origin&&!(String(env.ALLOWED_ORIGINS||'').split(',').map(x=>x.trim()).includes(origin)))return json({error:'Origin rejected'},403);
  let msg;try{if(Number(request.headers.get('content-length')||0)>262144)return json({error:'Request too large'},413);msg=await request.json()}catch{return json(err(null,-32700,'Invalid JSON'),400)}
@@ -87,9 +88,10 @@ export default {async fetch(request,env){
  const {ops,errors}=registry();let result;
  if(msg.method==='initialize')result={protocolVersion:'2025-03-26',capabilities:{tools:{listChanged:false}},serverInfo:{name:'spec-direct-worker',version:'1.5.3'}};
  else if(msg.method==='ping')result={};
- else if(msg.method==='tools/list')result={tools};
+ else if(msg.method==='tools/list')result={tools:publicReadOnly?tools.filter(t=>t.name==='connection_diagnostics'):tools};
  else if(msg.method==='tools/call'){
   const name=msg.params?.name,args=msg.params?.arguments||{};
+  if(publicReadOnly&&name!=='connection_diagnostics')return json(err(msg.id,-32602,'Tool unavailable on read-only public endpoint'),403);
   if(name==='list_api_operations')result=text({operations:ops,errors});
   else if(name==='connection_diagnostics')result=text({status:'ready',operations:Object.keys(ops).length,errors});
   else if(name==='call_api_operation'){
