@@ -75,7 +75,7 @@ const tools=[
 ];
 export default {async fetch(request,env){
  const url=new URL(request.url);
- if(url.pathname==='/health'&&request.method==='GET')return json({status:'ok',operations:Object.keys(registry().ops).length});
+ if((url.pathname==='/health'||url.pathname==='/')&&request.method==='GET')return json({status:'ok',service:'spec-direct-mcp',mode:'always-available-serverless',mcp_path:'/mcp',operations:Object.keys(registry().ops).length},200,{'Access-Control-Allow-Origin':'*'});
  if(url.pathname!=='/mcp')return json({error:'Not found'},404);
  if(request.method!=='POST')return json({error:'Method not allowed'},405,{'Allow':'POST'});
  if(!env.MCP_BEARER_TOKEN||request.headers.get('Authorization')!==`Bearer ${env.MCP_BEARER_TOKEN}`)return json({error:'Unauthorized'},401,{'WWW-Authenticate':'Bearer'});
