@@ -50,7 +50,7 @@ jobs:
           SPEC_DIRECT_MCP_TOKEN: ${{ secrets.SPEC_DIRECT_MCP_TOKEN }}
         run: |
           test -n "$MCP_PUBLIC_URL" || { echo 'Deployment did not return an MCP URL'; exit 1; }
-          node --input-type=module -e 'const url=process.env.MCP_PUBLIC_URL;const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+process.env.SPEC_DIRECT_MCP_TOKEN,"Content-Type":"application/json",Accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}})});const j=await r.json();if(!r.ok||!Array.isArray(j?.result?.tools))throw Error("MCP verification failed: HTTP "+r.status);console.log("MCP tools/list verified at",url);'
+          node --input-type=module -e 'const url=process.env.MCP_PUBLIC_URL;for(let attempt=1;attempt<=12;attempt++){const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+process.env.SPEC_DIRECT_MCP_TOKEN,"Content-Type":"application/json",Accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}})});const j=await r.json().catch(()=>null);if(r.ok&&Array.isArray(j?.result?.tools)){console.log("MCP tools/list verified at",url);process.exit(0)}console.log("MCP verification attempt",attempt,"HTTP",r.status);if(attempt===12||r.status!==401)throw Error("MCP verification failed: HTTP "+r.status);await new Promise(resolve=>setTimeout(resolve,10000))}'
       - name: Show public MCP URL
         run: echo "MCP_PUBLIC_URL=${{ steps.deploy.outputs.mcp_url }}" >> "$GITHUB_STEP_SUMMARY"
       - name: Build GitHub Pages with deployed MCP URL
