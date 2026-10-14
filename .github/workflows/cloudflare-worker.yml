@@ -6,6 +6,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  pages: write
+  id-token: write
 concurrency:
   group: cloudflare-worker
   cancel-in-progress: false
@@ -51,17 +53,20 @@ jobs:
           node --input-type=module -e 'const url=process.env.MCP_PUBLIC_URL;const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+process.env.SPEC_DIRECT_MCP_TOKEN,"Content-Type":"application/json",Accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}})});const j=await r.json();if(!r.ok||!Array.isArray(j?.result?.tools))throw Error("MCP verification failed: HTTP "+r.status);console.log("MCP tools/list verified at",url);'
       - name: Show public MCP URL
         run: echo "MCP_PUBLIC_URL=${{ steps.deploy.outputs.mcp_url }}" >> "$GITHUB_STEP_SUMMARY"
-      - name: Sync MCP_PUBLIC_URL to GitHub repository variable
+      - name: Build GitHub Pages with deployed MCP URL
         env:
-          GH_TOKEN: ${{ secrets.MCP_REPO_VARIABLE_TOKEN }}
           MCP_PUBLIC_URL: ${{ steps.deploy.outputs.mcp_url }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo 'MCP_REPO_VARIABLE_TOKEN not configured; set MCP_PUBLIC_URL repository variable manually.'
-            exit 0
-          fi
-          gh variable set MCP_PUBLIC_URL --body "$MCP_PUBLIC_URL"
-          echo 'MCP_PUBLIC_URL synchronized. Triggering Pages dashboard refresh.'
-          gh workflow run pages.yml --ref main
-
+        run: npm run pages:build
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+      - name: Package Pages dashboard
+        run: tar --dereference --hard-dereference -cvf github-pages.tar -C dist-pages .
+      - name: Upload Pages artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: github-pages
+          path: github-pages.tar
+          retention-days: 1
+          compression-level: 0
+      - name: Publish live MCP dashboard
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
