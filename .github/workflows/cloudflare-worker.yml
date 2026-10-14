@@ -35,7 +35,7 @@ jobs:
         run: |
           cd cloudflare
           npx wrangler deploy 2>&1 | tee ../worker-deploy.log
-          node --input-type=module -e 'import fs from "node:fs"; const log=fs.readFileSync("../worker-deploy.log","utf8"); const m=log.match(/https:\/\/[^\\s<>"\x27]+\\.workers\\.dev(?:\/[^\\s<>"\x27]*)?/); if(!m) throw Error("Cannot detect deployed workers.dev URL; check workers.dev subdomain settings"); const u=new URL(m[0]); u.pathname="/mcp"; fs.appendFileSync(process.env.GITHUB_OUTPUT,`mcp_url=${u.href}\\n`); console.log("Deployed MCP endpoint:",u.href);'
+          node --input-type=module -e 'import fs from "node:fs"; const log=fs.readFileSync("../worker-deploy.log","utf8"); const m=log.match(/https:\/\/[a-zA-Z0-9.-]+\.workers\.dev/); if(!m) throw Error("Cannot detect deployed workers.dev URL; check workers.dev subdomain settings"); const u=new URL(m[0]); u.pathname="/mcp"; fs.appendFileSync(process.env.GITHUB_OUTPUT,"mcp_url="+u.href+String.fromCharCode(10)); console.log("Deployed MCP endpoint:",u.href);'
       - name: Set MCP authentication secret
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
