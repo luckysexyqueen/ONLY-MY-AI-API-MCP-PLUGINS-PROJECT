@@ -1,8 +1,9 @@
-name: Cloudflare Pages dashboard
+name: GitHub Pages dashboard
 on:
   push:
     branches: [main]
     paths:
+      - 'docs/**'
       - 'scripts/build-pages.mjs'
       - '.github/workflows/pages.yml'
       - 'package.json'
@@ -10,27 +11,29 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  deployments: write
+  pages: write
+  id-token: write
 concurrency:
-  group: cloudflare-pages-production
+  group: github-pages
   cancel-in-progress: true
 jobs:
   deploy:
-    if: ${{ vars.CLOUDFLARE_PAGES_PROJECT != '' }}
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Generate static dashboard
+      - name: Build public dashboard (no API secrets)
         env:
           MCP_PUBLIC_URL: ${{ vars.MCP_PUBLIC_URL }}
         run: npm run pages:build
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist-pages --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=main
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          path: dist-pages
+      - id: deployment
+        uses: actions/deploy-pages@v4
