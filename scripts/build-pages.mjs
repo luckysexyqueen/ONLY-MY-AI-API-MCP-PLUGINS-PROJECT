@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 const out=path.resolve('dist-pages');
 fs.mkdirSync(out,{recursive:true});
-const configured=String(process.env.MCP_PUBLIC_URL||'').trim();
+const configured=String(process.env.MCP_PUBLIC_URL||'https://spec-direct-auto-inject-mcp.huiwon0621-mcp.workers.dev/mcp').trim();
 let mcpURL='';
 if(configured){
   const url=new URL(configured);
@@ -27,7 +27,10 @@ const input=document.getElementById('url'),status=document.getElementById('statu
 input.value=new URLSearchParams(location.search).get('mcp_url')||localStorage.getItem('mcp_public_url')||defaultURL;
 function normalized(){const u=new URL(input.value.trim());if(u.protocol!=='https:'||u.username||u.password)throw Error('HTTPS 주소만 사용할 수 있습니다');u.pathname='/mcp';u.search='';u.hash='';return u}
 document.getElementById('save').onclick=()=>{try{const u=normalized();localStorage.setItem('mcp_public_url',u.href);input.value=u.href;status.textContent='MCP_PUBLIC_URL 저장됨: '+u.href}catch(e){status.textContent=e.message}};
-document.getElementById('check').onclick=async()=>{try{const u=normalized();u.pathname='/health';health.href=u.href;health.hidden=false;status.textContent='상태 확인 중…';const r=await fetch(u.href,{cache:'no-store'});const body=await r.json();status.textContent=r.ok&&body.status==='ok'?'Worker 정상 응답 · 등록 작업 '+body.operations+'개':'HTTP '+r.status+' · '+JSON.stringify(body)}catch(e){status.textContent='브라우저에서 상태 확인 실패: '+e.message+' (CORS 또는 네트워크 문제일 수 있음). 상태 페이지 링크를 직접 열어보세요.'}};
+async function checkHealth(){try{const u=normalized();u.pathname='/health';health.href=u.href;health.hidden=false;status.textContent='상태 확인 중…';const r=await fetch(u.href,{cache:'no-store'});const body=await r.json();status.textContent=r.ok&&body.status==='ok'?'Worker 정상 응답 · 등록 작업 '+body.operations+'개':'HTTP '+r.status+' · '+JSON.stringify(body)}catch(e){status.textContent='브라우저에서 상태 확인 실패: '+e.message+' (CORS 또는 네트워크 문제일 수 있음). 상태 페이지 링크를 직접 열어보세요.'}};
+
+document.getElementById('check').onclick=checkHealth;
+if(input.value.trim()){checkHealth();setInterval(checkHealth,60000)}
 </script></body></html>`;
 fs.writeFileSync(path.join(out,'index.html'),html);
 console.log('Dashboard built; MCP_PUBLIC_URL:',mcpURL||'(not set)');
