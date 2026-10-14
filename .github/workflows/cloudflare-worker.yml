@@ -2,7 +2,7 @@ name: Cloudflare MCP Worker
 on:
   push:
     branches: [main]
-    paths: ['specs/**', 'cloudflare/**', 'scripts/bundle-worker.mjs', '.github/workflows/cloudflare-worker.yml']
+    paths: ['specs/**', 'cloudflare/**', 'scripts/bundle-worker.mjs', '.github/workflows/cloudflare-worker.yml', 'package.json']
   workflow_dispatch:
 permissions:
   contents: read
@@ -51,3 +51,17 @@ jobs:
           node --input-type=module -e 'const url=process.env.MCP_PUBLIC_URL;const r=await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+process.env.SPEC_DIRECT_MCP_TOKEN,"Content-Type":"application/json",Accept:"application/json, text/event-stream"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"tools/list",params:{}})});const j=await r.json();if(!r.ok||!Array.isArray(j?.result?.tools))throw Error("MCP verification failed: HTTP "+r.status);console.log("MCP tools/list verified at",url);'
       - name: Show public MCP URL
         run: echo "MCP_PUBLIC_URL=${{ steps.deploy.outputs.mcp_url }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Sync MCP_PUBLIC_URL to GitHub repository variable
+        env:
+          GH_TOKEN: ${{ secrets.MCP_REPO_VARIABLE_TOKEN }}
+          MCP_PUBLIC_URL: ${{ steps.deploy.outputs.mcp_url }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo 'MCP_REPO_VARIABLE_TOKEN not configured; set MCP_PUBLIC_URL repository variable manually.'
+            exit 0
+          fi
+          gh variable set MCP_PUBLIC_URL --body "$MCP_PUBLIC_URL"
+          echo 'MCP_PUBLIC_URL synchronized. Triggering Pages dashboard refresh.'
+          gh workflow run pages.yml --ref main
+
