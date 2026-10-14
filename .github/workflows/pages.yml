@@ -1,22 +1,23 @@
-name: GitHub Pages dashboard
+name: Cloudflare Pages dashboard
 on:
   push:
     branches: [main]
-    paths: ['scripts/build-pages.mjs', '.github/workflows/pages.yml', 'package.json', 'specs/**']
+    paths:
+      - 'scripts/build-pages.mjs'
+      - '.github/workflows/pages.yml'
+      - 'package.json'
+      - 'specs/**'
   workflow_dispatch:
 permissions:
   contents: read
-  pages: write
-  id-token: write
+  deployments: write
 concurrency:
-  group: pages
+  group: cloudflare-pages-production
   cancel-in-progress: true
 jobs:
   deploy:
+    if: ${{ vars.CLOUDFLARE_PAGES_PROJECT != '' }}
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,9 +27,10 @@ jobs:
         env:
           MCP_PUBLIC_URL: ${{ vars.MCP_PUBLIC_URL }}
         run: npm run pages:build
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v4
         with:
-          path: dist-pages
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist-pages --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=main
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
